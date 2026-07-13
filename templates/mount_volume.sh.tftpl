@@ -1,0 +1,80 @@
+#!/bin/bash
+set -e
+
+# Wait for the volume to be attached
+echo "Waiting a while for volume to be attached..."
+sleep 100
+
+# Create local UNIX group if it doesn't exist. UNIX_GROUP_NAME is empty for
+# servers without an okta_group (e.g. accept_default); skip group handling then.
+UNIX_GID=${unix_gid}
+UNIX_GROUP_NAME=${unix_group_name}
+DATA_MOUNT=/mnt/${mount_point}
+if [ -n "$UNIX_GROUP_NAME" ]; then
+  if ! getent group "$UNIX_GROUP_NAME" > /dev/null 2>&1; then
+    echo "Creating UNIX group: $UNIX_GROUP_NAME (GID: $UNIX_GID)..."
+    sudo groupadd -g "$UNIX_GID" "$UNIX_GROUP_NAME"
+  else
+    echo "UNIX group $UNIX_GROUP_NAME already exists"
+  fi
+fi
+
+resolve_data_device() {
+  # On Nitro instances the requested device name (/dev/sdf) is only a hint and
+  # the volume actually shows up as an NVMe device; the loop below handles that.
+  # The direct checks cover non-Nitro instances where the name is honored.
+  for name in /dev/sdf /dev/xvdf; do
+    if [ -b "$name" ]; then
+      readlink -f "$name"
+      return 0
+    fi
+  done
+  local root_dev
+  root_dev="$(readlink -f /dev/nvme0n1 2>/dev/null || true)"
+  for dev in /dev/nvme*n1; do
+    [ -b "$dev" ] || continue
+    [ "$dev" = "$root_dev" ] && continue
+    if [ -z "$(lsblk -no MOUNTPOINT "$dev" | tr -d '[:space:]')" ]; then
+      echo "$dev"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Wait up to ~5 minutes for the data device, then fail loudly if absent.
+DATA_DEVICE=""
+for _ in $(seq 1 150); do
+  if DATA_DEVICE="$(resolve_data_device)" && [ -n "$DATA_DEVICE" ]; then
+    break
+  fi
+  DATA_DEVICE=""
+  sleep 2
+done
+if [ -z "$DATA_DEVICE" ]; then
+  echo "ERROR: data volume device did not appear within timeout" >&2
+  exit 1
+fi
+
+if ! blkid "$DATA_DEVICE"; then
+  mkfs.xfs "$DATA_DEVICE"
+fi
+
+mkdir -p "$DATA_MOUNT"
+
+# Persist by filesystem UUID so reboots are stable regardless of NVMe ordering,
+# and keep it idempotent in case the script is ever re-run.
+DATA_UUID="$(blkid -s UUID -o value "$DATA_DEVICE")"
+grep -q "$DATA_UUID" /etc/fstab || \
+  echo "UUID=$DATA_UUID $DATA_MOUNT xfs defaults,nofail 0 2" >> /etc/fstab
+mountpoint -q "$DATA_MOUNT" || mount "$DATA_MOUNT"
+
+# Set permissions. Group ownership/setgid only when a unix group was supplied.
+sudo chmod 775 "$DATA_MOUNT"
+if [ -n "$UNIX_GROUP_NAME" ]; then
+  sudo chown -R root:"$UNIX_GROUP_NAME" "$DATA_MOUNT"
+  sudo chmod -R g+s "$DATA_MOUNT"
+fi
+
+echo "Volume mounted successfully at $DATA_MOUNT"
+df -h "$DATA_MOUNT"

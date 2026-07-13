@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+
+EFS_ID=${efs_id}
+REGION=${region}
+MOUNT_POINT=${mount_point}
+EFS_DNS=$EFS_ID.efs.$REGION.amazonaws.com
+MOUNT_OPTS=nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport
+
+# NFS client (best-effort; usually already present on AL2023 / RHEL)
+dnf install -y nfs-utils || true
+
+mkdir -p "$MOUNT_POINT"
+
+# Persist the mount; _netdev + nofail so a slow/absent mount target never blocks boot.
+FSTAB_LINE="$EFS_DNS:/ $MOUNT_POINT nfs4 $MOUNT_OPTS,_netdev,nofail 0 0"
+grep -qF "$MOUNT_POINT" /etc/fstab || echo "$FSTAB_LINE" >> /etc/fstab
+
+# A freshly created EFS mount target can take a few minutes before its DNS resolves.
+for _ in $(seq 1 60); do
+  mountpoint -q "$MOUNT_POINT" && break
+  mount -t nfs4 -o "$MOUNT_OPTS" "$EFS_DNS:/" "$MOUNT_POINT" 2>/dev/null || true
+  mountpoint -q "$MOUNT_POINT" && break
+  sleep 10
+done
+
+if mountpoint -q "$MOUNT_POINT"; then
+  echo "EFS $EFS_ID mounted at $MOUNT_POINT"
+  df -h "$MOUNT_POINT"
+else
+  echo "WARN: EFS $EFS_ID not mounted after timeout; fstab entry left in place (nofail)" >&2
+fi

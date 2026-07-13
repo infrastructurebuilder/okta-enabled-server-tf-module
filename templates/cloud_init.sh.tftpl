@@ -1,0 +1,71 @@
+#!/bin/bash
+set -euo pipefail
+
+# --- Install and enroll the OktaPAM sftd agent ---
+systemctl stop sftd || true
+mkdir -p /inputs/ioos-transfers
+
+rpm --import https://dist.scaleft.com/GPG-KEY-OktaPAM-2023
+
+# Detect OS family and major version to select the correct OktaPAM repo path.
+# shellcheck source=/dev/null
+. /etc/os-release
+case "$ID" in
+  amzn)
+    case "$VERSION_ID" in
+      2)    _PAM_OS="amazon/2" ;;
+      2023) _PAM_OS="amazon/2023" ;;
+      *)    _PAM_OS="amazon/$VERSION_ID" ;;
+    esac
+    ;;
+  rhel|centos|rocky|almalinux)
+    _PAM_OS="rhel/${VERSION_ID%%.*}"
+    ;;
+  fedora)
+    _PAM_OS="fedora/$VERSION_ID"
+    ;;
+  *)
+    echo "ERROR: unsupported OS '$ID' for OktaPAM repo detection" >&2
+    exit 1
+    ;;
+esac
+
+cat > /etc/yum.repos.d/oktapam-stable.repo <<REPO
+[oktapam-stable]
+name=Okta PAM Stable - PLATFORM-KEY RELEASE-VERSION
+baseurl=https://dist.scaleft.com/repos/rpm/stable/$_PAM_OS/\$basearch
+gpgcheck=1
+repo_gpgcheck=1
+enabled=1
+gpgkey=https://dist.scaleft.com/GPG-KEY-OktaPAM-2023
+REPO
+
+dnf install -y scaleft-server-tools
+
+# --- Configure sftd ---
+mkdir -p /etc/sft
+cat > /etc/sft/sftd.yaml <<SFTDCFG
+CanonicalName: ${canonical_name}
+%{~if length(aliases) > 0}
+AltNames:
+%{ for alias in aliases ~}
+  - ${alias}
+%{ endfor ~}
+%{~endif}
+Labels:
+  project: ${group_name}
+  group: ${group_name}
+  tx.group: ${group_name}
+SFTDCFG
+
+mkdir -p /var/lib/sftd
+echo "${token}" \
+  > /var/lib/sftd/enrollment.token
+
+systemctl enable sftd
+systemctl start sftd
+
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Install Ansible via UV for root
+uv tool install --with-executables-from ansible-core ansible
