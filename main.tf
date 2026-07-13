@@ -1,5 +1,33 @@
+# ---------------------------------------------------------------------------
+# OktaPAM lookups — derived from var.group_name using iboktagroup conventions:
+#   resource group  = "<group_name>_rg"
+#   project         = "<group_name>_rg_login"
+#   unix user group = "<group_name>_user"
+# ---------------------------------------------------------------------------
+
+data "oktapam_resource_groups" "this" {
+  name = "${var.group_name}_rg"
+}
+
+data "oktapam_resource_group_projects" "this" {
+  resource_group = one(data.oktapam_resource_groups.this.ids)
+  name           = "${var.group_name}_rg_login"
+}
+
+# Unix gid / group_name live on OktaPAM group *attributes* (separate API
+# endpoint not exposed by the Terraform provider), so we fetch them via a
+# bundled external data source script.
+data "external" "unix_attrs" {
+  program = ["${path.module}/scripts/query_unix_attrs.py"]
+  query = {
+    group_name = "${var.group_name}_user"
+  }
+}
+
 locals {
-  canonical_name = coalesce(var.canonical_name, "${var.group_name}-server-001")
+  canonical_name  = coalesce(var.canonical_name, "${var.group_name}-server-001")
+  unix_gid        = tonumber(data.external.unix_attrs.result.gid)
+  unix_group_name = data.external.unix_attrs.result.group_name
 
   # var.tags are applied globally via the provider's default_tags block in the
   # calling root module.  Merge here only for module-local resource Name tags
@@ -15,8 +43,8 @@ locals {
 # ---------------------------------------------------------------------------
 
 resource "oktapam_resource_group_server_enrollment_token" "this" {
-  resource_group = var.oktapam_resource_group_id
-  project        = var.oktapam_project_id
+  resource_group = one(data.oktapam_resource_groups.this.ids)
+  project        = one(data.oktapam_resource_group_projects.this.ids)
   description    = "Server enrollment token for ${var.group_name}"
 }
 
@@ -56,8 +84,8 @@ data "cloudinit_config" "this" {
 
     content = templatefile("${path.module}/templates/mount_volume.sh.tftpl", {
       mount_point     = "${var.group_name}_data"
-      unix_group_name = var.unix_group_name
-      unix_gid        = var.unix_gid
+      unix_group_name = local.unix_group_name
+      unix_gid        = local.unix_gid
     })
   }
 }

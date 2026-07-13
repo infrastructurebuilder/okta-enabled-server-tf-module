@@ -34,25 +34,9 @@ variable "aws_region" {
   default     = "us-east-2"
 }
 
-variable "oktapam_resource_group_id" {
-  description = "OktaPAM resource group ID used to generate the server enrollment token."
-  type        = string
-}
-
-variable "oktapam_project_id" {
-  description = "OktaPAM resource group project ID used to generate the server enrollment token."
-  type        = string
-}
-
-variable "unix_group_name" {
-  description = "UNIX group name created on the instance and set as owner of the data volume."
-  type        = string
-}
-
-variable "unix_gid" {
-  description = "GID for the UNIX group."
-  type        = number
-}
+# oktapam_resource_group_id, oktapam_project_id, unix_group_name, and unix_gid
+# are resolved internally via OktaPAM data sources and the bundled
+# scripts/query_unix_attrs.py external data source, keyed off var.group_name.
 
 # ---------------------------------------------------------------------------
 # Optional / with defaults
