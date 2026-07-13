@@ -19,7 +19,7 @@ case "$ID" in
     esac
     ;;
   rhel|centos|rocky|almalinux)
-    _PAM_OS="rhel/${VERSION_ID%%.*}"
+    _PAM_OS="rhel/$${VERSION_ID%%.*}"
     ;;
   fedora)
     _PAM_OS="fedora/$VERSION_ID"

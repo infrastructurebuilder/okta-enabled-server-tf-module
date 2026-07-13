@@ -25,11 +25,13 @@ variable "subnet_ids" {
 variable "iam_instance_profile" {
   description = "Name of the IAM instance profile to attach to the instance."
   type        = string
+  default     = "ioos_cloud_sandbox_terraform_role"
 }
 
 variable "aws_region" {
   description = "AWS region (used inside the EFS mount cloud-init script)."
   type        = string
+  default     = "us-east-2"
 }
 
 variable "oktapam_resource_group_id" {
