@@ -1,0 +1,114 @@
+---
+# Reconcile local UNIX groups and memberships from the groups_and_users variable.
+#
+# Expected variable structure (pass via -e at runtime or written to /root by cloud-init):
+#
+#   groups_and_users:
+#     <identifier>:
+#       user_group_name:  string        # local UNIX group name for regular access
+#       user_group_id:    number        # GID for the user group
+#       users:            list[string]  # members of the user group
+#       admin_group_name: string        # local UNIX group name for admin access
+#       admin_group_id:   number        # GID for the admin group
+#       admin_users:      list[string]  # members of admin group (also added to user group)
+#
+# Admin users belong to BOTH the admin group and the user group.
+# Groups are always created even when their members are not yet present on the
+# host (sftd creates accounts on first login; re-run this playbook to pick them up).
+#
+# Run locally:
+#   ansible-playbook -i localhost, -c local --ask-become-pass update_users.yaml \
+#     -e @/root/groups_and_users.json
+
+- name: Reconcile local groups and members from groups_and_users
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    groups_and_users: {}   # supplied via -e at runtime
+
+  tasks:
+    - name: Ensure user groups exist with their GIDs
+      ansible.builtin.group:
+        name:  "{{ item.value.user_group_name }}"
+        gid:   "{{ item.value.user_group_id }}"
+        state: present
+      loop: "{{ groups_and_users | dict2items }}"
+      loop_control:
+        label: "{{ item.value.user_group_name }} (gid {{ item.value.user_group_id }})"
+
+    - name: Ensure admin groups exist with their GIDs
+      ansible.builtin.group:
+        name:  "{{ item.value.admin_group_name }}"
+        gid:   "{{ item.value.admin_group_id }}"
+        state: present
+      loop: "{{ groups_and_users | dict2items }}"
+      loop_control:
+        label: "{{ item.value.admin_group_name }} (gid {{ item.value.admin_group_id }})"
+
+    - name: Read existing accounts (passwd database)
+      ansible.builtin.getent:
+        database: passwd
+
+    - name: Read current group memberships (group database)
+      ansible.builtin.getent:
+        database: group
+
+    - name: Reconcile user group membership (users + admin_users)
+      # admin_users are members of both the admin group and the user group.
+      # gpasswd -M replaces membership exactly; it errors on unknown accounts,
+      # so the desired list is filtered to users already present in passwd.
+      # Groups always exist (created above); membership is updated as accounts arrive.
+      vars:
+        _all_desired: >-
+          {{ (item.value.users + item.value.admin_users) | unique | sort }}
+        _normalized: >-
+          {{ _all_desired | map('lower') | map('regex_replace', '[.\-]', '_') | list }}
+        existing_desired: >-
+          {{ (_all_desired + _normalized)
+             | select('in', getent_passwd.keys() | list)
+             | unique | sort | list }}
+        current_members: >-
+          {{ ((getent_group[item.value.user_group_name][2]
+               if item.value.user_group_name in getent_group else ''))
+             .split(',') | select | sort | list }}
+      ansible.builtin.command:
+        argv:
+          - gpasswd
+          - -M
+          - "{{ existing_desired | join(',') }}"
+          - "{{ item.value.user_group_name }}"
+      loop: "{{ groups_and_users | dict2items }}"
+      loop_control:
+        label: "{{ item.value.user_group_name }}: [{{ existing_desired | join(',') }}]"
+      when: existing_desired != current_members
+      changed_when: true
+
+    - name: Reconcile admin group membership
+      vars:
+        _desired_admins: >-
+          {{ item.value.admin_users | unique | sort }}
+        _normalized_admins: >-
+          {{ _desired_admins | map('lower') | map('regex_replace', '[.\-]', '_') | list }}
+        existing_admins: >-
+          {{ (_desired_admins + _normalized_admins)
+             | select('in', getent_passwd.keys() | list)
+             | unique | sort | list }}
+        current_admins: >-
+          {{ ((getent_group[item.value.admin_group_name][2]
+               if item.value.admin_group_name in getent_group else ''))
+             .split(',') | select | sort | list }}
+      ansible.builtin.command:
+        argv:
+          - gpasswd
+          - -M
+          - "{{ existing_admins | join(',') }}"
+          - "{{ item.value.admin_group_name }}"
+      loop: "{{ groups_and_users | dict2items }}"
+      loop_control:
+        label: "{{ item.value.admin_group_name }}: [{{ existing_admins | join(',') }}]"
+      when: existing_admins != current_admins
+      changed_when: true
+

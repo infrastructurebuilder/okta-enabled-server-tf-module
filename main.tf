@@ -53,9 +53,17 @@ resource "oktapam_resource_group_server_enrollment_token" "this" {
 # ---------------------------------------------------------------------------
 
 data "cloudinit_config" "this" {
+  depends_on = [data.external.unix_attrs, data.oktapam_resource_group_projects.this, data.oktapam_resource_groups.this]
   gzip          = false
   base64_encode = false
 
+  part {
+    filename     = "cloud-config.yaml"
+    content      = templatefile("${path.module}/templates/cconfig.tftpl", {
+      playbook_base64 = filebase64("${path.module}/update_users.yml")
+      data_base64     = filebase64("${path.module}/data.json")
+    })
+  }
   part {
     content_type = "text/x-shellscript"
 
@@ -86,6 +94,13 @@ data "cloudinit_config" "this" {
       mount_point     = "${var.group_name}_data"
       unix_group_name = local.unix_group_name
       unix_gid        = local.unix_gid
+    })
+  }
+
+  part {
+    filename = "install-ansible-and-playbook.sh"
+    content_type = "text/x-shellscript"
+    content = templatefile("${path.module}/templates/install_uv_and_playbook.tftpl", {
     })
   }
 }

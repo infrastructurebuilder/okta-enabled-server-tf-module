@@ -64,8 +64,3 @@ echo "${token}" \
 
 systemctl enable sftd
 systemctl start sftd
-
-curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-
-# Install Ansible via UV for root
-uv tool install --with-executables-from ansible-core ansible

@@ -1,0 +1,8 @@
+
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Install Ansible via UV for root
+uv tool install --with-executables-from ansible-core ansible
+echo "Sleeping 60 seconds to allow Okta to propagate new users and groups before running the playbook..."
+sleep 60
+ansible-playbook -i localhost, --connection=local /root/update_users.yml -e @/root/groups_and_users.json
