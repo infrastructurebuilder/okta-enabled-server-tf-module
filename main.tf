@@ -133,6 +133,19 @@ resource "aws_security_group" "instance" {
   description = "Managed SG for ${var.canonical_name}"
   vpc_id      = var.vpc_id
 
+  # sft ssh reaches the server as gateway -> instance:22; without this rule the
+  # OktaPAM gateway cannot complete the connection even when sftd is enrolled.
+  dynamic "ingress" {
+    for_each = var.gateway_security_group_id == null ? [] : [var.gateway_security_group_id]
+    content {
+      description     = "SSH from OktaPAM gateway"
+      from_port       = 22
+      to_port         = 22
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   egress {
     description = "Allow all outbound"
     from_port   = 0

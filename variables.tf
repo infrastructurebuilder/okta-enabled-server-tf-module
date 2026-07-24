@@ -59,6 +59,12 @@ variable "additional_security_group_ids" {
   default     = []
 }
 
+variable "gateway_security_group_id" {
+  description = "Security group ID of the OktaPAM gateway. When set, the instance SG allows inbound SSH (TCP 22) from it — required for sft ssh to reach the server."
+  type        = string
+  default     = null
+}
+
 variable "instance_type" {
   description = "EC2 instance type."
   type        = string
