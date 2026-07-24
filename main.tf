@@ -135,16 +135,22 @@ resource "aws_security_group" "instance" {
   description = "Managed SG for ${var.canonical_name}"
   vpc_id      = var.vpc_id
 
-  # sft ssh reaches the server as gateway -> instance:22; without this rule the
-  # OktaPAM gateway cannot complete the connection even when sftd is enrolled.
+  # sft ssh reaches the server as gateway -> instance, on TWO ports: 4421
+  # (sftd's gateway-agent gRPC, used for session setup / on-demand user
+  # creation) and then 22 (the bridged SSH session).  Without 4421 the gateway
+  # times out during session setup and sft ssh hangs even though sshd:22 is
+  # reachable and the server is enrolled.
   dynamic "ingress" {
-    for_each = var.gateway_security_group_id == null ? [] : [var.gateway_security_group_id]
+    for_each = var.gateway_security_group_id == null ? {} : {
+      22   = "SSH from OktaPAM gateway"
+      4421 = "sftd gateway-agent RPC from OktaPAM gateway"
+    }
     content {
-      description     = "SSH from OktaPAM gateway"
-      from_port       = 22
-      to_port         = 22
+      description     = ingress.value
+      from_port       = tonumber(ingress.key)
+      to_port         = tonumber(ingress.key)
       protocol        = "tcp"
-      security_groups = [ingress.value]
+      security_groups = [var.gateway_security_group_id]
     }
   }
 
