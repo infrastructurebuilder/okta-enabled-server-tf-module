@@ -63,4 +63,6 @@ echo "${token}" \
   > /var/lib/sftd/enrollment.token
 
 systemctl enable sftd
-systemctl start sftd
+# The RPM scriptlet starts sftd before the config and token above exist, and
+# `start` on a running unit is a no-op — restart so enrollment actually happens.
+systemctl restart sftd

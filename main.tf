@@ -71,7 +71,19 @@ data "cloudinit_config" "this" {
       data_base64     = data.external.groups_and_users.result.b64
     })
   }
+  # cloud-init runs user scripts in alphabetical filename order, NOT part
+  # order — the numeric prefixes below are what actually sequence them.
   part {
+    filename     = "00-install-ssm-agent.sh"
+    content_type = "text/x-shellscript"
+
+    content = templatefile("${path.module}/templates/install_ssm_agent.sh.tftpl", {
+      aws_region = var.aws_region
+    })
+  }
+
+  part {
+    filename     = "01-enroll-sftd.sh"
     content_type = "text/x-shellscript"
 
     content = templatefile("${path.module}/templates/cloud_init.sh.tftpl", {
@@ -83,7 +95,7 @@ data "cloudinit_config" "this" {
   }
 
   part {
-    filename     = "mount-efs.sh"
+    filename     = "02-mount-efs.sh"
     content_type = "text/x-shellscript"
 
     content = templatefile("${path.module}/templates/mount_efs.sh.tftpl", {
@@ -94,7 +106,7 @@ data "cloudinit_config" "this" {
   }
 
   part {
-    filename     = "mount-volume.sh"
+    filename     = "03-mount-volume.sh"
     content_type = "text/x-shellscript"
 
     content = templatefile("${path.module}/templates/mount_volume.sh.tftpl", {
@@ -105,7 +117,7 @@ data "cloudinit_config" "this" {
   }
 
   part {
-    filename = "install-ansible-and-playbook.sh"
+    filename     = "04-install-ansible-and-playbook.sh"
     content_type = "text/x-shellscript"
     content = templatefile("${path.module}/templates/install_uv_and_playbook.tftpl", {
     })

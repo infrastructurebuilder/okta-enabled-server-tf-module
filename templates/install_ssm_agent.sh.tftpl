@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+# RHEL AMIs do not ship amazon-ssm-agent (Amazon Linux does); install it from
+# the regional bucket so SSM access works from first boot.
+dnf install -y "https://s3.${aws_region}.amazonaws.com/amazon-ssm-${aws_region}/latest/linux_amd64/amazon-ssm-agent.rpm"
+systemctl enable --now amazon-ssm-agent
