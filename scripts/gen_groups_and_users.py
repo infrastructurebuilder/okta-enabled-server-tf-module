@@ -35,8 +35,12 @@ Usage:
   gen_groups_and_users.py -o /root/groups.yaml   # YAML to file
   gen_groups_and_users.py --json -o groups.json  # JSON (for ansible -e @file)
   gen_groups_and_users.py --groups gsoc,stofs    # filter to specific base names
+  gen_groups_and_users.py --external             # Terraform external data source:
+                                                 #   stdin  {"groups": "a,b" | ""}
+                                                 #   stdout {"b64": "<base64 JSON>"}
 """
 import argparse
+import base64
 import json
 import os
 import sys
@@ -192,7 +196,15 @@ def main():
                     help="output JSON instead of YAML (useful with ansible-playbook -e @file)")
     ap.add_argument("--groups", default=None,
                     help="comma-separated list of base group names to include (default: all pairs)")
+    ap.add_argument("--external", action="store_true",
+                    help="Terraform external data source mode: read {\"groups\": ...} from "
+                         "stdin, write {\"b64\": \"<base64 JSON document>\"} to stdout")
     args = ap.parse_args()
+
+    if args.external:
+        query = json.load(sys.stdin)
+        if query.get("groups"):
+            args.groups = query["groups"]
 
     key    = env("TF_VAR_oktapam_key",    "OKTAPAM_KEY")
     secret = env("TF_VAR_oktapam_secret", "OKTAPAM_SECRET")
@@ -254,6 +266,12 @@ def main():
         }
 
     document = {"groups_and_users": result}
+
+    if args.external:
+        # External data source protocol: single flat map of string values.
+        text = json.dumps(document, indent=2)
+        json.dump({"b64": base64.b64encode(text.encode()).decode()}, sys.stdout)
+        return
 
     if args.json:
         text = json.dumps(document, indent=2)

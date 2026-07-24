@@ -24,6 +24,15 @@ data "external" "unix_attrs" {
   }
 }
 
+# groups_and_users snapshot for the update_users.yml playbook, generated at
+# plan time from OktaPAM _user/_admin group pairs (base64 JSON in result.b64).
+data "external" "groups_and_users" {
+  program = ["${path.module}/scripts/gen_groups_and_users.py", "--external"]
+  query = {
+    groups = "" # empty = all _user/_admin pairs; or e.g. var.group_name
+  }
+}
+
 locals {
   canonical_name  = coalesce(var.canonical_name, "${var.group_name}-server-001")
   unix_gid        = tonumber(data.external.unix_attrs.result.gid)
@@ -61,7 +70,7 @@ data "cloudinit_config" "this" {
     filename     = "cloud-config.yaml"
     content      = templatefile("${path.module}/templates/cconfig.tftpl", {
       playbook_base64 = filebase64("${path.module}/update_users.yml")
-      data_base64     = filebase64("${path.module}/data.json")
+      data_base64     = data.external.groups_and_users.result.b64
     })
   }
   part {
@@ -192,6 +201,15 @@ resource "aws_instance" "this" {
     volume_size = var.root_volume_size
     volume_type = var.data_volume_type
     encrypted   = true
+  }
+
+  # user_data embeds a point-in-time Okta membership snapshot; ignore drift so
+  # membership changes never stop or replace the instance.  Reconcile a running
+  # server by re-running update_users.yml on the box (see README), and force a
+  # rebuild after intentional cloud-init/template changes with:
+  #   tofu apply -replace=aws_instance.this
+  lifecycle {
+    ignore_changes = [user_data]
   }
 
   tags = local.common_tags
