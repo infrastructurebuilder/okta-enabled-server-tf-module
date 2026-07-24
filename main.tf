@@ -61,8 +61,10 @@ resource "oktapam_resource_group_server_enrollment_token" "this" {
 
 data "cloudinit_config" "this" {
   depends_on = [data.external.unix_attrs, data.oktapam_resource_group_projects.this, data.oktapam_resource_groups.this]
-  gzip          = false
-  base64_encode = false
+  # Gzip keeps the rendered archive under EC2's 16 KB user_data limit; the
+  # embedded playbook + groups JSON alone push the plain MIME text past it.
+  gzip          = true
+  base64_encode = true
 
   part {
     filename     = "cloud-config.yaml"
@@ -217,7 +219,7 @@ resource "aws_instance" "this" {
   )
 
   associate_public_ip_address = false
-  user_data                   = data.cloudinit_config.this.rendered
+  user_data_base64            = data.cloudinit_config.this.rendered
   iam_instance_profile        = var.iam_instance_profile
 
   root_block_device {
@@ -232,7 +234,7 @@ resource "aws_instance" "this" {
   # rebuild after intentional cloud-init/template changes with:
   #   tofu apply -replace=aws_instance.this
   lifecycle {
-    ignore_changes = [user_data]
+    ignore_changes = [user_data, user_data_base64]
   }
 
   tags = local.common_tags
