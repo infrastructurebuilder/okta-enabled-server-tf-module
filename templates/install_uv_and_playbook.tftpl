@@ -8,9 +8,10 @@ uv tool install --with-executables-from ansible-core ansible
 
 # Make uv-installed tools available: update-shell persists PATH for future
 # shells, and the export covers THIS non-login shell (update-shell only edits
-# rc files, which this already-running script never re-reads).
+# rc files, which this already-running script never re-reads).  Literal
+# /root because cloud-init runs scripts without HOME set (set -u would trip).
 uv tool update-shell
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/root/.local/bin:$PATH"
 echo "Sleeping 60 seconds to allow Okta to propagate new users and groups before running the playbook..."
 sleep 60
 ansible-playbook -i localhost, --connection=local /root/update_users.yml -e @/root/groups_and_users.json
