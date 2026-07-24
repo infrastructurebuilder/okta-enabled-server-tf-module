@@ -43,10 +43,8 @@ variable "aws_region" {
 # ---------------------------------------------------------------------------
 
 variable "canonical_name" {
-  description = "OktaPAM canonical name for the server. Defaults to \"<group_name>-server-001\"."
+  description = "OktaPAM canonical name for the server."
   type        = string
-  default     = null
-  nullable    = true
 }
 
 variable "aliases" {

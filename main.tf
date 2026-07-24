@@ -34,7 +34,6 @@ data "external" "groups_and_users" {
 }
 
 locals {
-  canonical_name  = coalesce(var.canonical_name, "${var.group_name}-server-001")
   unix_gid        = tonumber(data.external.unix_attrs.result.gid)
   unix_group_name = data.external.unix_attrs.result.group_name
 
@@ -42,8 +41,7 @@ locals {
   # calling root module.  Merge here only for module-local resource Name tags
   # so we never duplicate a key across default_tags and resource tags.
   common_tags = merge({
-    Name      = "${var.group_name} Server"
-    ManagedBy = "terraform"
+    Name      = var.canonical_name
   }, var.tags)
 }
 
@@ -54,7 +52,7 @@ locals {
 resource "oktapam_resource_group_server_enrollment_token" "this" {
   resource_group = one(data.oktapam_resource_groups.this.ids)
   project        = one(data.oktapam_resource_group_projects.this.ids)
-  description    = "Server enrollment token for ${var.group_name}"
+  description    = "Server enrollment token for ${var.canonical_name}"
 }
 
 # ---------------------------------------------------------------------------
@@ -77,7 +75,7 @@ data "cloudinit_config" "this" {
     content_type = "text/x-shellscript"
 
     content = templatefile("${path.module}/templates/cloud_init.sh.tftpl", {
-      canonical_name = local.canonical_name
+      canonical_name = var.canonical_name
       aliases        = var.aliases
       group_name     = var.group_name
       token          = oktapam_resource_group_server_enrollment_token.this.token
@@ -119,8 +117,8 @@ data "cloudinit_config" "this" {
 # ---------------------------------------------------------------------------
 
 resource "aws_security_group" "instance" {
-  name        = "${var.group_name}-instance-sg"
-  description = "Managed SG for ${var.group_name} instance"
+  name        = "${var.canonical_name}-instance-sg"
+  description = "Managed SG for ${var.canonical_name}"
   vpc_id      = var.vpc_id
 
   egress {
@@ -131,7 +129,7 @@ resource "aws_security_group" "instance" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${var.group_name}-instance-sg" })
+  tags = merge(local.common_tags, { Name = "${var.canonical_name}-instance-sg" })
 }
 
 # ---------------------------------------------------------------------------
@@ -139,12 +137,12 @@ resource "aws_security_group" "instance" {
 # ---------------------------------------------------------------------------
 
 resource "aws_security_group" "efs" {
-  name        = "${var.group_name}-efs-sg"
-  description = "Allow NFS from ${var.group_name} instance to EFS mount targets"
+  name        = "${var.canonical_name}-efs-sg"
+  description = "Allow NFS from ${var.canonical_name} instance to EFS mount targets"
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "NFS from ${var.group_name} instance security group"
+    description     = "NFS from ${var.canonical_name} instance security group"
     from_port       = 2049
     to_port         = 2049
     protocol        = "tcp"
@@ -159,14 +157,14 @@ resource "aws_security_group" "efs" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${var.group_name}-efs-sg" })
+  tags = merge(local.common_tags, { Name = "${var.canonical_name}-efs-sg" })
 }
 
 resource "aws_efs_file_system" "this" {
-  creation_token = "${var.group_name}-efs"
+  creation_token = "${var.canonical_name}-efs"
   encrypted      = true
 
-  tags = merge(local.common_tags, { Name = "${var.group_name}-efs" })
+  tags = merge(local.common_tags, { Name = "${var.canonical_name}-efs" })
 }
 
 # One mount target per private subnet so the instance can reach EFS regardless
@@ -225,7 +223,7 @@ resource "aws_ebs_volume" "data" {
   type              = var.data_volume_type
   encrypted         = true
 
-  tags = merge(local.common_tags, { Name = "${var.group_name}-data" })
+  tags = merge(local.common_tags, { Name = "${var.canonical_name}-data" })
 }
 
 resource "aws_volume_attachment" "data" {
