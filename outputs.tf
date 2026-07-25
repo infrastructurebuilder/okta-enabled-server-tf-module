@@ -33,3 +33,25 @@ output "enrollment_token" {
   value       = oktapam_resource_group_server_enrollment_token.this.token
   sensitive   = true
 }
+
+# FSx Lustre outputs — null when the module is used without fsx_s3_bucket.
+
+output "fsx_id" {
+  description = "FSx Lustre file system ID."
+  value       = one(module.fsx_with_s3[*].fs_id)
+}
+
+output "fsx_dns_name" {
+  description = "DNS name used to mount the FSx Lustre file system."
+  value       = one(module.fsx_with_s3[*].dns_name)
+}
+
+output "fsx_mount_name" {
+  description = "Lustre mount name (dns@tcp:/mount_name)."
+  value       = one(module.fsx_with_s3[*].mount_name)
+}
+
+output "fsx_security_group_id" {
+  description = "Security group protecting the FSx Lustre ENIs."
+  value       = one(module.fsx_with_s3[*].security_group_id)
+}

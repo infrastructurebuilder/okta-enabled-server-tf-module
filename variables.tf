@@ -47,6 +47,7 @@ variable "canonical_name" {
   type        = string
 }
 
+
 variable "aliases" {
   description = "OktaPAM AltNames for the server."
   type        = list(string)
@@ -99,4 +100,28 @@ variable "tags" {
   description = "Additional tags to merge onto every resource. Do NOT include tags already applied via the provider's default_tags block."
   type        = map(string)
   default     = {}
+}
+
+variable "fsx_s3_bucket" {
+  description = "Name of the S3 bucket to use as the FSx data repository."
+  type        = string
+  default     = null
+}
+
+variable "fsx_s3_import_prefix" {
+  description = "Optional prefix within the S3 bucket to import data from. Leave blank for the root of the bucket."
+  type        = string
+  default     = ""
+}
+
+variable "fsx_s3_export_prefix" {
+  description = "Prefix within the S3 bucket to export modified data to."
+  type        = string
+  default     = ""
+}
+
+variable "fsx_mount_dir" {
+  description = "Path at which the FSx Lustre share is mounted on the instance."
+  type        = string
+  default     = "/mnt/fsx"
 }

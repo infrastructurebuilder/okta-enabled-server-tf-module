@@ -1,0 +1,41 @@
+#!/bin/bash
+set -euo pipefail
+
+# --- Install the Lustre client ---
+curl -sSf https://fsx-lustre-client-repo.s3.amazonaws.com/el/10/fsx-lustre-client.repo \
+  -o /etc/yum.repos.d/aws-fsx.repo
+dnf install -y kmod-lustre-client lustre-client
+
+# --- Persistently mount the FSx Lustre filesystem (if one was created) ---
+# Empty when the module was invoked without fsx_s3_bucket; install-only then.
+FSX_DNS="${fsx_dns_name}"
+FSX_MOUNT_NAME="${fsx_mount_name}"
+FSX_MOUNT_DIR="${fsx_mount_dir}"
+
+if [ -z "$FSX_DNS" ]; then
+  echo "No FSx filesystem configured; Lustre client installed, skipping mount."
+  exit 0
+fi
+
+mkdir -p "$FSX_MOUNT_DIR"
+
+# _netdev + nofail so a slow/absent filesystem never blocks boot; automount
+# retries transparently if FSx wasn't reachable at mount time.
+FSTAB_LINE="$FSX_DNS@tcp:/$FSX_MOUNT_NAME $FSX_MOUNT_DIR lustre defaults,relatime,flock,_netdev,x-systemd.automount,x-systemd.requires=network.target,nofail 0 0"
+grep -qF "$FSX_MOUNT_DIR" /etc/fstab || echo "$FSTAB_LINE" >> /etc/fstab
+systemctl daemon-reload
+
+# A freshly created filesystem can take a little while to accept clients.
+for _ in $(seq 1 30); do
+  mountpoint -q "$FSX_MOUNT_DIR" && break
+  mount -t lustre -o relatime,flock "$FSX_DNS@tcp:/$FSX_MOUNT_NAME" "$FSX_MOUNT_DIR" 2>/dev/null || true
+  mountpoint -q "$FSX_MOUNT_DIR" && break
+  sleep 10
+done
+
+if mountpoint -q "$FSX_MOUNT_DIR"; then
+  echo "FSx Lustre $FSX_DNS mounted at $FSX_MOUNT_DIR"
+  df -h "$FSX_MOUNT_DIR"
+else
+  echo "WARN: FSx $FSX_DNS not mounted after timeout; fstab automount entry left in place" >&2
+fi

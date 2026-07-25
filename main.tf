@@ -107,6 +107,7 @@ data "cloudinit_config" "this" {
     })
   }
 
+
   part {
     filename     = "03-mount-volume.sh"
     content_type = "text/x-shellscript"
@@ -122,6 +123,16 @@ data "cloudinit_config" "this" {
     filename     = "04-install-ansible-and-playbook.sh"
     content_type = "text/x-shellscript"
     content = templatefile("${path.module}/templates/install_uv_and_playbook.tftpl", {
+    })
+  }
+
+  part {
+    filename     = "05-install-lustre.sh"
+    content_type = "text/x-shellscript"
+    content = templatefile("${path.module}/templates/install_lustre.sh.tftpl", {
+      fsx_dns_name   = local.is_s3_backed_fsx ? module.fsx_with_s3[0].dns_name : ""
+      fsx_mount_name = local.is_s3_backed_fsx ? module.fsx_with_s3[0].mount_name : ""
+      fsx_mount_dir  = var.fsx_mount_dir
     })
   }
 }
